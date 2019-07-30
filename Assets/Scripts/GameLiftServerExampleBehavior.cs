@@ -12,16 +12,23 @@ using System.Collections;
 using Amazon.Runtime.Internal;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using System.Net.NetworkInformation;
+using System.Net;
+
 public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
 {
+    public string SceneToLoad;
+
     public Text myConsoleText;
+
+    public string myID;
 
     bool started;
 
     [SerializeField]
     bool StartEvenIfNotHeadless;
 
-    int myPort;
+
     int listeningPort = 7777;
 
 
@@ -29,10 +36,49 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
     {
         if (staticData.boltFree == true)
             BoltLauncher.SetUdpPlatform(new PhotonPlatform());
-        BoltLauncher.StartServer(myPort);
+        BoltLauncher.StartServer(listeningPort);
 
         yield return null;
     }
+
+    void Test1()
+    {
+        if (IsHeadlessMode() == true)
+            listeningPort = int.Parse(GetArg("-p", "-port"));
+        else
+        {
+            for (int a = 7777; a < 7799; a++)
+            {
+                if (PortInUse(a) == false)
+                {
+                    listeningPort = a;
+                    break;
+                }
+            }
+
+
+
+        }
+    }
+
+    public static bool PortInUse(int port)
+    {
+        bool inUse = false;
+
+        IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+        IPEndPoint[] ipEndPoints = ipProperties.GetActiveUdpListeners();
+
+        foreach (IPEndPoint endPoint in ipEndPoints)
+        {
+            if (endPoint.Port == port)
+            {
+                inUse = true;
+                break;
+            }
+        }
+        return inUse;
+    }
+
 
     public static void LogToMyConsoleMainThread(string text)
     {
@@ -79,6 +125,12 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
 
         LogToMyConsoleMainThread("GameLift Server Starting");
 
+
+
+
+        Test1();
+        Debug.Log("Port: " + listeningPort);
+
         //InitSDK establishes a local connection with the Amazon GameLift agent to enable 
         //further communication.
         var initSDKOutcome = GameLiftServerAPI.InitSDK();
@@ -95,9 +147,11 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
                      GameLiftServerAPI.ActivateGameSession();
 
                      //TODO: We should call "ActivateGameSession" after Bolt is done starting
+                     myID = gameSession.GameSessionId;
+                     SceneToLoad = gameSession.GameSessionData;
 
 
-                     myPort = gameSession.Port;
+                    
                      NotAmazonUnityMainThreadDispatcher.Instance().Enqueue(Test0());
                      //UnityMainThreadDispatcher.Instance().Enqueue(Test0());
 
@@ -150,7 +204,8 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
                     //Here, the game server tells GameLift what set of files to upload when the game session ends.
                     //GameLift uploads everything specified here for the developers to fetch later.
                      //TODO: put stuff in the log?
-                    "/local/game/logs/myserver.log"
+                    "C:/Users/gl-user-server/AppData/LocalLow/DefaultCompany/GameLiftTest2"
+                    //"/local/game/logs/myserver.log"
                 })
                 );
 
@@ -258,6 +313,10 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
 
         if (headless == true || StartEvenIfNotHeadless == true)
         {
+
+            Application.targetFrameRate = 60;
+
+
             DoStartStuff();
         }
     }
@@ -284,14 +343,21 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
         //{
         if (BoltNetwork.IsServer)
         {
-            BoltNetwork.SetServerInfo("MyGameLiftGame", null);
-            BoltNetwork.LoadScene("game");
+            BoltNetwork.SetServerInfo(myID, null);
+
+            string SceneName = "";
+            if (SceneToLoad == "CubeWorld")
+                SceneName = "game";
+            else if (SceneToLoad == "SphereWorld")
+                SceneName = "game2";
+
+            BoltNetwork.LoadScene(SceneName);
         }
         else
         {
 
         }
-        
+
     }
 
     static string GetArg(params string[] names)
@@ -320,6 +386,10 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
         return Environment.CommandLine.Contains("-batchmode") && Environment.CommandLine.Contains("-nographics");
     }
 
+
+
+
+
     public override void ConnectRequest(UdpEndPoint endpoint, IProtocolToken token)
     {
         //check UserID and SessionID
@@ -327,7 +397,7 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
 
         TestToken myToken = (TestToken)token;
 
-        
+
 
         //ask GameLift to verify sessionID is valid, it will change player slot from "RESERVED" to "ACTIVE"
         Aws.GameLift.GenericOutcome outCome = GameLiftServerAPI.AcceptPlayerSession(myToken.ArbitraryData);

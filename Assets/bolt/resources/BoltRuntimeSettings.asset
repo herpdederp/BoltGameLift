@@ -3,7 +3,7 @@
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
-  m_PrefabParentObject: {fileID: 0}
+  m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
   m_GameObject: {fileID: 0}
   m_Enabled: 1
@@ -45,8 +45,8 @@ MonoBehaviour:
     EnableIPv6: 0
   debugClientCount: 2
   debugStartPort: 50538
-  debugStartMapName: PhotonGame
-  debugPlayAsServer: 0
+  debugStartMapName: game
+  debugPlayAsServer: 1
   showDebugInfo: 1
   overrideTimeScale: 1
   logUncaughtExceptions: 0
@@ -60,7 +60,7 @@ MonoBehaviour:
   masterServerGameId: 09A20926-601A-4EF4-BFEE-374761B0D2A5
   showBoltEntityHints: 0
   serializeProjectAsText: 0
-  photonAppId: 
+  photonAppId: 564ad7d4-b951-46bb-9347-859213b9eda6
   photonUsePunch: 1
   photonCloudRegionIndex: 12
   instantiateMode: 2
@@ -68,7 +68,7 @@ MonoBehaviour:
   globalEntityPriorityCalculatorQueryOption: 3
   globalEntityReplicationFilterQueryOption: 3
   a2sServerPort: 21777
-  enableA2sServer: 1
+  enableA2sServer: 0
   RoomUpdateRate: 1
   RoomCreateTimeout: 10
   RoomJoinTimeout: 10

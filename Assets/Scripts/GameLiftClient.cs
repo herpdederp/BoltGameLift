@@ -8,6 +8,7 @@ using UnityEngine;
 using System.Threading;
 using UdpKit;
 using udpkit.platform.photon;
+using System.IO;
 
 public class GameLiftClient : Bolt.GlobalEventListener
 {
@@ -50,18 +51,15 @@ A fleet must have an ACTIVE status before a game session can be created in it.
 
 
     */
+
+
     bool localMode;
 
     bool clientInit;
     bool init;
 
     GameSession myGameSession;
-
-
-    private const string m_targetFleet = "fleet-1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d";
-
-
-
+    public DescribeGameSessionsResponse gameSessionlist;
 
     AmazonGameLiftClient m_Client;
     string UniqueID;
@@ -74,13 +72,19 @@ A fleet must have an ACTIVE status before a game session can be created in it.
     ThreadStart threadStart;
     Thread myThread;
 
-    string myGameSessionID;
-    int myPort;
-    string myIP;
-    string myName;
+
 
     string myPlayerSessionID;
 
+    public GameSession selectedGameSession;
+
+    public int randomNumber;
+
+    IEnumerator GetRandomNumberThousand()
+    {
+        randomNumber = UnityEngine.Random.Range(0, 999);
+        yield return null;
+    }
 
     public void ToggleLocalClientMode()
     {
@@ -101,7 +105,7 @@ A fleet must have an ACTIVE status before a game session can be created in it.
 
     public void DoStartBoltClient()
     {
-        if (myIP == null || myPlayerSessionID == null)
+        if (selectedGameSession == null || myPlayerSessionID == null)
         {
             LogToMyConsoleMainThread("No Player Session");
             return;
@@ -124,6 +128,20 @@ A fleet must have an ACTIVE status before a game session can be created in it.
 
     void Awake()
     {
+        string desktopPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
+        string path = desktopPath + "\\test.txt";
+   
+        StreamReader reader = new StreamReader(path);
+        string a = reader.ReadToEnd();
+        reader.Close();
+        string[] words = a.Split(' ');
+        if (words.Length == 3)
+        {
+            staticData.myFleetID = words[0];
+            staticData.awsAccessKeyId = words[1];
+            staticData.awsSecretAccessKey = words[2];
+        }
+
 
 
 #if BOLT_CLOUD
@@ -155,10 +173,10 @@ A fleet must have an ACTIVE status before a game session can be created in it.
         else gameLiftConfig.ServiceURL = "http://localhost:9080";
 
 
-       
-        m_Client = new AmazonGameLiftClient(                   
-                    "ACCESSKEY",
-                    "SECRETKEY",
+
+        m_Client = new AmazonGameLiftClient(
+                    staticData.awsAccessKeyId,
+                    staticData.awsSecretAccessKey,
                     gameLiftConfig);
 
         LogToMyConsoleMainThread("Client Initialized");
@@ -167,34 +185,61 @@ A fleet must have an ACTIVE status before a game session can be created in it.
 
     public void DoDescribeGameSessions()
     {
-        threadStart = new ThreadStart(DescribeGameSessions);
-        myThread = new Thread(threadStart);
-        myThread.Start();
+
+
+        Thread t = new Thread(new ParameterizedThreadStart(DescribeGameSessions));
+        t.Start(null);
     }
 
-    public void DoCreatePlayerSession()
+    public void DoCreatePlayerSession(GameSession gameSession)
     {
-        var threadStart2 = new ThreadStart(CreatePlayerSessionLocal);
-        var myThread2 = new Thread(threadStart2);
-        myThread2.Start();
+        Thread t = new Thread(new ParameterizedThreadStart(CreatePlayerSessionLocal));
+        t.Start(gameSession);
     }
 
-    public void DoCreateGameSession(int maxPlayers)
+    public void DoCreateGameSession(int maxPlayers, string GameSessionData)
     {
+        CreateGameSessionData CGSD = new CreateGameSessionData();
+        CGSD.maxPlayers = maxPlayers;
+        CGSD.GameSessionData = GameSessionData;
+
+
+        NotAmazonUnityMainThreadDispatcher.Instance().Enqueue(GetRandomNumberThousand());
+
         Thread t = new Thread(new ParameterizedThreadStart(CreateGameSession));
-        t.Start(maxPlayers);
+        t.Start(CGSD);
     }
 
-    void CreateGameSession(object maxPlayers)
+    void CreateGameSession(object myCreateGameSessionData)
     {
         LogToMyConsoleMainThread("CreateGameSession");
+
+        CreateGameSessionData CGSD = (CreateGameSessionData)myCreateGameSessionData;
+
+
+
+        GameProperty GP0 = new GameProperty();
+        GP0.Key = "BoltPro";
+#if !BOLT_CLOUD
+        GP0.Value = "true";
+#endif
+
+#if BOLT_CLOUD
+        GP0.Value = "false";
+#endif
+        List<GameProperty> GPL = new List<GameProperty>();
+        GPL.Add(GP0);
 
 
         //Request must contain either GameSessionID or FleetID, but not both
         var request = new CreateGameSessionRequest()
         {
-            FleetId = m_targetFleet,
-            MaximumPlayerSessionCount = (int)maxPlayers,
+            FleetId = staticData.myFleetID,
+            MaximumPlayerSessionCount = CGSD.maxPlayers,
+            CreatorId = UniqueID,
+            GameSessionData = CGSD.GameSessionData,
+            GameProperties = GPL,
+            Name = "Test" + randomNumber
 
 
 
@@ -254,7 +299,9 @@ A fleet must have an ACTIVE status before a game session can be created in it.
     }
 
 
-    public void DescribeGameSessions()
+
+
+    public void DescribeGameSessions(object GameSessionID)
     {
         if (clientInit == false)
         {
@@ -262,18 +309,30 @@ A fleet must have an ACTIVE status before a game session can be created in it.
             return;
         }
 
-        LogToMyConsoleMainThread("DescribeGameSessions");
 
         //Request must contain either GameSessionID or FleetID, but not both
         var request = new DescribeGameSessionsRequest();
 
-        if (localMode == false)
-            request.FleetId = m_targetFleet;
+        string myGameSessionID = (string)GameSessionID;
+
+        if (myGameSessionID != null)
+        {
+            request.GameSessionId = myGameSessionID;
+            LogToMyConsoleMainThread("DescribeGameSession " + myGameSessionID);
+        }
+        else if (localMode == false)
+        {
+            request.FleetId = staticData.myFleetID;
+            LogToMyConsoleMainThread("DescribeGameSessions for fleet " + staticData.myFleetID);
+        }
         else
+        {
             request.GameSessionId = "gsess-abc";
+            LogToMyConsoleMainThread("Local Mode: describing default session");
+            LogToMyConsoleMainThread("DescribeGameSession " + myGameSessionID);
+        }
 
-
-        DescribeGameSessionsResponse gameSessionlist = null;
+        gameSessionlist = null;
         try
         {
             gameSessionlist = m_Client.DescribeGameSessions(request);
@@ -288,18 +347,16 @@ A fleet must have an ACTIVE status before a game session can be created in it.
         }
         else
         {
-            myName = gameSessionlist.GameSessions[0].Name;
-            myGameSessionID = gameSessionlist.GameSessions[0].GameSessionId;
-            myPort = gameSessionlist.GameSessions[0].Port;
+
 
             LogToMyConsoleMainThread("Number of Game Sessions: " + gameSessionlist.GameSessions.Count);
 
             foreach (GameSession GS in gameSessionlist.GameSessions)
             {
-                LogToMyConsoleMainThread("Game Session ID: + " + GS.GameSessionId
-                    + " Game Session Status: " + GS.StatusReason + " " + GS.StatusReason
-                    + " Game Session Endpoint: " + GS.IpAddress + ":" + GS.Port
-                    + " Game Session Players: " + GS.CurrentPlayerSessionCount + "/" + GS.MaximumPlayerSessionCount
+                LogToMyConsoleMainThread("Game Session ID: " + GS.GameSessionId
+                    + " Game Session Status: " + GS.Status.ToString()
+                + " Game Session Endpoint: " + GS.IpAddress + ":" + GS.Port
+                + " Game Session Players: " + GS.CurrentPlayerSessionCount + "/" + GS.MaximumPlayerSessionCount
 
                     );
             }
@@ -321,7 +378,7 @@ A fleet must have an ACTIVE status before a game session can be created in it.
         var request = new SearchGameSessionsRequest()
         {
             FilterExpression = "hasAvailablePlayerSessions=true",
-            FleetId = m_targetFleet,
+            FleetId = staticData.myFleetID,
             Limit = 20,
             //FilterExpression = "maximumSessions>=10 AND hasAvailablePlayerSessions=true" // Example filter to limit search results
         };
@@ -429,9 +486,9 @@ A fleet must have an ACTIVE status before a game session can be created in it.
     }
 
 
-    void CreatePlayerSessionLocal()
+    void CreatePlayerSessionLocal(object gameSession)
     {
-        if (myGameSessionID == null)
+        if (selectedGameSession.GameSessionId == null)
         {
             LogToMyConsoleMainThread("No Game Sessions");
             return;
@@ -440,12 +497,12 @@ A fleet must have an ACTIVE status before a game session can be created in it.
 
 
         LogToMyConsoleMainThread("Creating Player Request. Game Session ID: " +
-            myGameSessionID + " PlayerId: ");
+            selectedGameSession.GameSessionId + " PlayerId: ");
 
         var request2 = new CreatePlayerSessionRequest()
         {
-            GameSessionId = myGameSessionID,
-            PlayerData = "dab",
+            GameSessionId = selectedGameSession.GameSessionId,
+            PlayerData = "BoltIsBestNetworking",
             PlayerId = UniqueID
         };
 
@@ -463,14 +520,12 @@ A fleet must have an ACTIVE status before a game session can be created in it.
         }
         if (SessionResponse == null)
         {
-            Debug.Log("Where are my dragons???");
-            //return null;
+            Debug.Log("Can't Create Play Session");
         }
         else
         {
             myPlayerSessionID = SessionResponse.PlayerSession.PlayerSessionId;
-            myIP = SessionResponse.PlayerSession.IpAddress;
-            //NotAmazonUnityMainThreadDispatcher.Instance().Enqueue(Test0());
+            
 
 
         }
@@ -478,15 +533,15 @@ A fleet must have an ACTIVE status before a game session can be created in it.
 
     public override void BoltStartDone()
     {
-       
+
         if (BoltNetwork.IsClient)
         {
             if (staticData.boltFree == false)
             {
+#if !BOLT_CLOUD
                 TestToken token = new TestToken();
                 token.ArbitraryData = myPlayerSessionID;
-                UdpEndPoint endPoint = new UdpEndPoint(UdpIPv4Address.Parse(myIP), (ushort)myPort);
-#if !BOLT_CLOUD
+                UdpEndPoint endPoint = new UdpEndPoint(UdpIPv4Address.Parse(selectedGameSession.IpAddress), (ushort)selectedGameSession.Port);
                 BoltNetwork.Connect(endPoint, token);
 #endif
             }
@@ -502,10 +557,9 @@ A fleet must have an ACTIVE status before a game session can be created in it.
             foreach (var session in BoltNetwork.SessionList)
             {
                 var photonSession = session.Value as PhotonSession;
-
                 if (photonSession.Source == UdpSessionSource.Photon)
                 {
-                    if (photonSession.HostName == myName)
+                    if (photonSession.HostName == selectedGameSession.GameSessionId)
                     {
                         TestToken token = new TestToken();
                         token.ArbitraryData = myPlayerSessionID;
@@ -516,4 +570,10 @@ A fleet must have an ACTIVE status before a game session can be created in it.
         }
     }
 
+}
+
+public class CreateGameSessionData
+{
+    public int maxPlayers;
+    public string GameSessionData;
 }
