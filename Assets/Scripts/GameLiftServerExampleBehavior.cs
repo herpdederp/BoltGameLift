@@ -345,7 +345,7 @@ public class GameLiftServerExampleBehavior : Bolt.GlobalEventListener
         {
             BoltNetwork.SetServerInfo(myID, null);
 
-            string SceneName = "";
+            string SceneName = "game";
             if (SceneToLoad == "CubeWorld")
                 SceneName = "game";
             else if (SceneToLoad == "SphereWorld")

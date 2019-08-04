@@ -59,6 +59,7 @@ public class GameLiftInterface : MonoBehaviour
         int count = 0;
         foreach (GameSession GS in myGameLiftClient.gameSessionlist.GameSessions)
         {
+            //TODO: Make this actually dictate what mode the server starts in
             string boltMode = "";
             GameProperty GP = GS.GameProperties.Find(x => x.Key == "BoltPro");
             if (GP == null)
